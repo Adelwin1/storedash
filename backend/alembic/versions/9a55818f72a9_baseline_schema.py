@@ -468,7 +468,12 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['business_id'], ['businesses.id'], ),
     sa.ForeignKeyConstraint(['operating_day_id'], ['operating_days.id'], ),
     sa.ForeignKeyConstraint(['operator_id'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint(
+        'operating_day_id',
+        'daily_number',
+        name='uq_orders_operating_day_daily_number'
+    )
     )
     op.create_index(op.f('ix_orders_assigned_driver_id'), 'orders', ['assigned_driver_id'], unique=False)
     op.create_index(op.f('ix_orders_business_id'), 'orders', ['business_id'], unique=False)

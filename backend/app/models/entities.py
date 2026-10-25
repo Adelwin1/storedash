@@ -471,6 +471,14 @@ class Order(
 ):
     __tablename__ = "orders"
 
+    __table_args__ = (
+        UniqueConstraint(
+            "operating_day_id",
+            "daily_number",
+            name="uq_orders_operating_day_daily_number",
+        ),
+    )
+
     id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
