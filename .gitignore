@@ -1,0 +1,30 @@
+**/.env
+**/.env.local
+**/.venv
+**/node_modules
+**/.next
+**/__pycache__
+*.pyc
+*.db
+.DS_Store
+
+# Local development artifacts
+*.pre-*
+*.backup
+*.tsbuildinfo
+
+# Manual backup directories
+backups/
+backend/backups/
+
+# Logs
+*.log
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+
+# OS/editor
+.vscode/
+.idea/
+*.before-*
