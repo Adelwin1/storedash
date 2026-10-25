@@ -28,7 +28,7 @@ from app.api.routes import (
 )
 
 from app.core.config import get_settings
-from app.core.db import Base, engine, SessionLocal
+from app.core.db import SessionLocal
 from app.core.auth import authenticate_request
 from app.models.entities import Role
 
@@ -235,13 +235,6 @@ app.add_middleware(
 
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def create_tables():
-    Base.metadata.create_all(
-        bind=engine
-    )
 
 
 app.include_router(
