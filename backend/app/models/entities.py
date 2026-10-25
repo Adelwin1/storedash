@@ -660,7 +660,7 @@ class Order(
     delivery_margin: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     optimizer_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     pricing_version: Mapped[str | None] = mapped_column(
-        String(40),
+        String(120),
         nullable=True,
     )
 

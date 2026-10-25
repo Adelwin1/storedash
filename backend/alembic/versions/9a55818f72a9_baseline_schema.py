@@ -457,7 +457,7 @@ def upgrade() -> None:
     sa.Column('customer_acceptance_probability', sa.Float(), nullable=True),
     sa.Column('delivery_margin', sa.Numeric(precision=12, scale=2), nullable=True),
     sa.Column('optimizer_score', sa.Float(), nullable=True),
-    sa.Column('pricing_version', sa.String(length=40), nullable=True),
+    sa.Column('pricing_version', sa.String(length=120), nullable=True),
     sa.Column('quote_generated_at', sa.DateTime(), nullable=True),
     sa.Column('customer_approved_at', sa.DateTime(), nullable=True),
     sa.Column('finalized_at', sa.DateTime(), nullable=True),
