@@ -32,6 +32,13 @@ from app.models.entities import (
     DriverVehicle,
     VehicleSpec,
     BatchDriverOffer,
+    PaymentTransaction,
+    PaymentStatus,
+    PayoutProfile,
+    Payout,
+    PayoutStatus,
+    PayoutRecipientType,
+    PaymentEvent,
 )
 
 __all__ = [
@@ -68,4 +75,11 @@ __all__ = [
     "DriverVehicle",
     "VehicleSpec",
     "BatchDriverOffer",
+    "PaymentTransaction",
+    "PaymentStatus",
+    "PayoutProfile",
+    "Payout",
+    "PayoutStatus",
+    "PayoutRecipientType",
+    "PaymentEvent",
 ]

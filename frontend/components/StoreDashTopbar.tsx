@@ -108,7 +108,9 @@ export default function StoreDashTopbar() {
               <span>
                 {user.role === "admin"
                   ? "Administrator"
-                  : "StoreDash Operator"}
+                  : user.role === "manager"
+                    ? "StoreDash Manager"
+                    : "StoreDash Operator"}
               </span>
             </div>
 

@@ -16,6 +16,24 @@ class Settings(BaseSettings):
     # Change to true when StoreDash goes live.
     enforce_operating_hours: bool = False
 
+    # Hubtel payments / payouts
+    hubtel_enabled: bool = False
+    hubtel_api_id: str = ""
+    hubtel_api_key: str = ""
+    hubtel_collection_account: str = ""
+    hubtel_disbursement_account: str = ""
+    hubtel_callback_base_url: str = "http://127.0.0.1:8000"
+    hubtel_receive_base_url: str = "https://rmp.hubtel.com"
+    hubtel_send_base_url: str = "https://smp.hubtel.com"
+    hubtel_status_base_url: str = "https://api-txnstatus.hubtel.com"
+    hubtel_verification_base_url: str = "https://rnv.hubtel.com"
+
+    # Dedicated StoreDash payment-phone relay.
+    sms_relay_enabled: bool = False
+    sms_relay_key: str = ""
+    sms_relay_allowed_senders: str = ""
+    hubtel_timeout_seconds: float = 30.0
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

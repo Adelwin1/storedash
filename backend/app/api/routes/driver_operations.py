@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 
+from app.services.driver_payouts import trigger_driver_payout
+
 from app.models.entities import (
     Business,
     DeliveryEvent,
@@ -749,14 +751,24 @@ def update_delivery_status(
 
     # A problem pauses this order without pretending
     # a pickup/drop stage was completed.
+    completed_batch_id = None
+
     if action != "problem":
-        sync_batch_order_action(
+        synced_batch = sync_batch_order_action(
             db,
             order=
                 order,
             action=
                 action,
         )
+
+        if (
+            synced_batch is not None
+            and synced_batch.status == "completed"
+        ):
+            completed_batch_id = (
+                synced_batch.id
+            )
 
 
     db.add(
@@ -776,7 +788,18 @@ def update_delivery_status(
     )
 
 
+    # Commit the successful delivery FIRST.
     db.commit()
+
+    # Money movement is deliberately separated from
+    # delivery completion. A Hubtel outage must never
+    # undo a completed customer delivery.
+    if completed_batch_id is not None:
+        trigger_driver_payout(
+            db,
+            batch_id=
+                completed_batch_id,
+        )
 
 
     return order_summary(

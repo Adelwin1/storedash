@@ -26,6 +26,15 @@ import type {
 } from "@/lib/types";
 
 
+type CurrentUser = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  is_active: boolean;
+};
+
+
 type WorkflowItem = {
   id: number;
 
@@ -259,6 +268,26 @@ export default function OrderWorkspacePage() {
 
 
   const [
+    currentUser,
+    setCurrentUser,
+  ] = useState<
+    CurrentUser | null
+  >(null);
+
+
+  const [
+    expectedPayerPhone,
+    setExpectedPayerPhone,
+  ] = useState("");
+
+
+  const [
+    expectedPayerNetwork,
+    setExpectedPayerNetwork,
+  ] = useState("mtn");
+
+
+  const [
     order,
     setOrder,
   ] = useState<
@@ -314,22 +343,22 @@ export default function OrderWorkspacePage() {
   ] = useState(true);
 
 
-  const [
-    paymentMethod,
-    setPaymentMethod,
-  ] = useState("momo");
+  useEffect(() => {
+    async function loadCurrentUser() {
+      try {
+        const current =
+          await api<CurrentUser>(
+            "/auth/me"
+          );
 
+        setCurrentUser(current);
+      } catch {
+        setCurrentUser(null);
+      }
+    }
 
-  const [
-    paymentReference,
-    setPaymentReference,
-  ] = useState("");
-
-
-  const [
-    paymentNotes,
-    setPaymentNotes,
-  ] = useState("");
+    void loadCurrentUser();
+  }, []);
 
 
   async function loadOrder() {
@@ -1304,16 +1333,85 @@ export default function OrderWorkspacePage() {
   }
 
 
-  async function confirmPayment() {
+  async function registerExpectedSmsPayment() {
     if (!order) {
       return;
     }
 
-    if (!paymentMethod.trim()) {
+    if (!expectedPayerPhone.trim()) {
       setError(
-        "Payment method is required."
+        "Enter the phone number the customer will pay from."
       );
 
+      return;
+    }
+
+    try {
+      setError("");
+      setMessage("");
+
+      const result =
+        await api<{
+          transaction_id: number;
+          status: string;
+          amount: string;
+          payer_phone: string;
+          already_exists: boolean;
+        }>(
+          `/payments/orders/${order.id}/expect-sms-payment`,
+          {
+            method: "POST",
+
+            body: JSON.stringify({
+              customer_phone:
+                expectedPayerPhone.trim(),
+
+              network:
+                expectedPayerNetwork.trim(),
+            }),
+          }
+        );
+
+      setMessage(
+        result.already_exists
+          ? "StoreDash is already watching for this order payment."
+          : `Payment watch started for ${result.payer_phone}.`
+      );
+
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Could not register expected payment."
+      );
+    }
+  }
+
+
+  async function adminOverridePayment() {
+    if (!order) {
+      return;
+    }
+
+    if (
+      currentUser?.role !== "admin"
+    ) {
+      setError(
+        "Admin access required."
+      );
+
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Confirm GH₵${Number(
+          order.final_total
+        ).toFixed(
+          2
+        )} as paid using the temporary admin override?`
+      )
+    ) {
       return;
     }
 
@@ -1325,31 +1423,18 @@ export default function OrderWorkspacePage() {
         await api<
           WorkflowOrder
         >(
-          `/orders/${order.id}/confirm-payment`,
+          `/orders/${order.id}/admin-override-payment`,
           {
             method:
               "POST",
 
             body:
               JSON.stringify({
-                amount:
-                  Number(
-                    order.final_total
-                  ),
-
-                method:
-                  paymentMethod.trim(),
-
                 reference:
-                  paymentReference.trim()
-                  || null,
+                  null,
 
                 notes:
-                  paymentNotes.trim()
-                  || null,
-
-                operator_id:
-                  null,
+                  "Admin override from StoreDash order workspace.",
               }),
           }
         );
@@ -1359,14 +1444,14 @@ export default function OrderWorkspacePage() {
       );
 
       setMessage(
-        "Payment confirmed. Supplier preparation can begin."
+        "Admin override recorded. Order moved to payment confirmed."
       );
 
     } catch (error) {
       setError(
         error instanceof Error
           ? error.message
-          : "Could not confirm payment."
+          : "Could not apply admin payment override."
       );
     }
   }
@@ -2629,7 +2714,7 @@ export default function OrderWorkspacePage() {
             }}
           >
             <h2>
-              Payment Confirmation
+              Awaiting Payment
             </h2>
 
             <p className="label">
@@ -2639,79 +2724,125 @@ export default function OrderWorkspacePage() {
                   order.final_total
                 ).toFixed(2)
               }.
-              Confirm receipt before supplier
-              preparation or rider commitment.
             </p>
 
             <div
               style={{
-                display:
-                  "grid",
-
-                gap:
-                  12,
-
-                marginTop:
-                  16,
-
-                maxWidth:
-                  520,
+                display: "grid",
+                gap: 10,
+                marginTop: 16,
+                maxWidth: 520,
               }}
             >
-              <input
-                value={
-                  paymentMethod
-                }
-
-                placeholder="Payment method — e.g. momo"
-
-                onChange={
-                  (event) =>
-                    setPaymentMethod(
-                      event.target.value
-                    )
-                }
-              />
+              <p
+                className="label"
+                style={{
+                  margin: 0,
+                }}
+              >
+                Ask the customer which phone number
+                they will send the payment from.
+                StoreDash will match the payment
+                automatically when it arrives.
+              </p>
 
               <input
                 value={
-                  paymentReference
+                  expectedPayerPhone
                 }
-
-                placeholder="Payment reference"
-
+                placeholder="Payer phone — e.g. 0241234567"
                 onChange={
-                  (event) =>
-                    setPaymentReference(
+                  event =>
+                    setExpectedPayerPhone(
                       event.target.value
                     )
                 }
               />
 
-              <textarea
+              <select
                 value={
-                  paymentNotes
+                  expectedPayerNetwork
                 }
-
-                placeholder="Payment notes"
-
                 onChange={
-                  (event) =>
-                    setPaymentNotes(
+                  event =>
+                    setExpectedPayerNetwork(
                       event.target.value
                     )
-                }
-              />
-
-              <button
-                className="btn"
-                onClick={
-                  confirmPayment
                 }
               >
-                Confirm Payment
+                <option value="mtn">
+                  MTN MoMo
+                </option>
+
+                <option value="telecel">
+                  Telecel Cash
+                </option>
+
+                <option value="bank">
+                  Bank transfer
+                </option>
+
+                <option value="other">
+                  Other
+                </option>
+              </select>
+
+              <button
+                type="button"
+                className="btn"
+                onClick={
+                  registerExpectedSmsPayment
+                }
+              >
+                Watch for Payment
               </button>
+
+              <p
+                className="label"
+                style={{
+                  margin: 0,
+                }}
+              >
+                If the customer pays from a different
+                number, StoreDash will send it to
+                verification instead of guessing.
+              </p>
             </div>
+
+            {
+              currentUser?.role ===
+              "admin"
+              && (
+                <div
+                  style={{
+                    marginTop: 20,
+                    paddingTop: 16,
+                    borderTop:
+                      "1px solid rgba(0,0,0,.10)",
+                  }}
+                >
+                  <p
+                    className="label"
+                    style={{
+                      marginTop: 0,
+                    }}
+                  >
+                    Payment phone is not connected yet.
+                    Use this temporary override only
+                    for StoreDash testing.
+                  </p>
+
+                  <button
+                    className="btn"
+                    onClick={
+                      adminOverridePayment
+                    }
+                  >
+                    Admin Override: Confirm Payment
+                  </button>
+                </div>
+              )
+            }
           </div>
         )
       }

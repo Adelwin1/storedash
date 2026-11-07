@@ -21,6 +21,7 @@ from app.api.routes import (
     locations,
     operating_days,
     order_workflow,
+    payments,
     order_logistics,
     orders,
     suppliers,
@@ -53,6 +54,12 @@ app = FastAPI(
 PUBLIC_API_PATHS = {
     "/api/auth/login",
     "/api/auth/signup",
+
+    # Provider-to-provider callbacks.
+    # These cannot require a StoreDash employee session.
+    "/api/payments/hubtel/collections/callback",
+    "/api/payments/hubtel/payouts/callback",
+    "/api/payments/sms-relay/events",
 }
 
 
@@ -314,6 +321,11 @@ app.include_router(
 
 app.include_router(
     order_logistics.router,
+    prefix="/api",
+)
+
+app.include_router(
+    payments.router,
     prefix="/api",
 )
 

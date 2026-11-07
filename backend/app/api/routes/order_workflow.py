@@ -9,6 +9,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Request,
 )
 
 from pydantic import (
@@ -44,6 +45,11 @@ from app.schemas.order import (
     OrderRead,
 )
 
+
+from app.services.supplier_payouts import (
+    SupplierPayoutSetupError,
+    prepare_supplier_payouts_for_order,
+)
 
 router = APIRouter(
     prefix="/orders",
@@ -1283,6 +1289,163 @@ class WorkflowActionRequest(BaseModel):
     notes: str | None = None
 
 
+class AdminPaymentOverrideRequest(BaseModel):
+    reference: str | None = Field(
+        default=None,
+        max_length=120,
+    )
+
+    notes: str | None = None
+
+
+@router.post(
+    "/{order_id}/admin-override-payment",
+    response_model=OrderRead,
+)
+def admin_override_payment(
+    order_id: int,
+    payload: AdminPaymentOverrideRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    # Temporary testing/launch escape hatch.
+    # Only a real authenticated StoreDash admin can use it.
+    if getattr(
+        request.state,
+        "user_role",
+        None,
+    ) != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required.",
+        )
+
+    actor_id = getattr(
+        request.state,
+        "user_id",
+        None,
+    )
+
+    order = load_order(
+        db,
+        order_id,
+    )
+
+    if not order:
+        raise HTTPException(
+            status_code=404,
+            detail="Order not found.",
+        )
+
+    if (
+        order.status
+        != OrderStatus.AWAITING_PAYMENT
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Admin payment override is only "
+                "available while awaiting payment."
+            ),
+        )
+
+    if order.customer_approved_at is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Customer approval has not "
+                "been recorded."
+            ),
+        )
+
+    expected = Decimal(
+        str(
+            order.final_total
+            or 0
+        )
+    ).quantize(
+        Decimal("0.01")
+    )
+
+    if expected <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Order has no valid payable total."
+            ),
+        )
+
+    now = ghana_now()
+
+    before_status = (
+        order.status.value
+    )
+
+    # Amount is always taken from StoreDash.
+    # Admin cannot type or modify it.
+    order.payment_amount = expected
+
+    order.payment_method = (
+        "admin_override"
+    )
+
+    order.payment_reference = (
+        payload.reference.strip()
+        if payload.reference
+        else (
+            f"ADMIN-OVERRIDE-"
+            f"{order.id}-"
+            f"{now.strftime('%Y%m%d%H%M%S')}"
+        )
+    )
+
+    order.payment_notes = (
+        payload.notes
+        or (
+            "Temporary admin payment override "
+            "used while payment relay is unavailable."
+        )
+    )
+
+    order.payment_confirmed_at = now
+
+    order.status = (
+        OrderStatus.PAYMENT_CONFIRMED
+    )
+
+    audit(
+        db,
+        order,
+        "admin_payment_override",
+        before={
+            "status":
+                before_status,
+        },
+        after={
+            "status":
+                order.status.value,
+
+            "amount":
+                str(expected),
+
+            "method":
+                "admin_override",
+
+            "reference":
+                order.payment_reference,
+        },
+        actor_id=
+            actor_id,
+    )
+
+    db.commit()
+
+    return load_order(
+        db,
+        order.id,
+    )
+
+
 @router.post(
     "/{order_id}/confirm-payment",
     response_model=OrderRead,
@@ -1292,6 +1455,16 @@ def confirm_payment(
     payload: PaymentConfirmationRequest,
     db: Session = Depends(get_db),
 ):
+    # Payment confirmation is provider-controlled.
+    # StoreDash employees must never be able to mark an order paid manually.
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Manual payment confirmation is disabled. "
+            "Payment must be confirmed by the payment provider."
+        ),
+    )
+
     order = load_order(
         db,
         order_id,
@@ -1632,6 +1805,17 @@ def mark_ready_for_dispatch(
                     "have a confirmed pickup location."
                 ),
             )
+
+    try:
+        prepare_supplier_payouts_for_order(
+            db,
+            order.id,
+        )
+    except SupplierPayoutSetupError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
 
     now = ghana_now()
 

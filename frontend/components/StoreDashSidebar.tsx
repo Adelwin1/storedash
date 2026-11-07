@@ -20,6 +20,7 @@ import {
   Truck,
   Send,
   UserCog,
+  WalletCards,
   ArrowRight,
 } from "lucide-react";
 
@@ -74,6 +75,11 @@ const primaryLinks = [
     href: "/dispatch",
     label: "Dispatch",
     icon: Send,
+  },
+  {
+    href: "/payments",
+    label: "Payments",
+    icon: WalletCards,
   },
 ];
 

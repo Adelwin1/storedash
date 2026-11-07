@@ -85,6 +85,29 @@ class OrderStatus(str, Enum):
     FAILED = "failed"
 
 
+class PaymentStatus(str, Enum):
+    INITIATED = "initiated"
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    REFUNDED = "refunded"
+
+
+class PayoutRecipientType(str, Enum):
+    SUPPLIER = "supplier"
+    DRIVER = "driver"
+
+
+class PayoutStatus(str, Enum):
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    PROCESSING = "processing"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -3622,5 +3645,359 @@ class AuthSession(
 
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime,
+        nullable=True,
+    )
+
+
+# ============================================================
+# PAYMENTS + LOCKED PAYOUT DESTINATIONS
+# ============================================================
+
+
+class PaymentTransaction(
+    Base,
+    TimestampMixin,
+):
+    __tablename__ = "payment_transactions"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id"),
+        index=True,
+    )
+
+    provider: Mapped[str] = mapped_column(
+        String(40),
+        default="hubtel",
+    )
+
+    client_reference: Mapped[str] = mapped_column(
+        String(120),
+        unique=True,
+        index=True,
+    )
+
+    provider_transaction_id: Mapped[str | None] = mapped_column(
+        String(160),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
+
+    amount: Mapped[float] = mapped_column(
+        Numeric(12, 2),
+    )
+
+    currency: Mapped[str] = mapped_column(
+        String(8),
+        default="GHS",
+    )
+
+    payment_method: Mapped[str] = mapped_column(
+        String(40),
+        default="momo",
+    )
+
+    payer_phone: Mapped[str | None] = mapped_column(
+        String(30),
+        nullable=True,
+    )
+
+    status: Mapped[PaymentStatus] = mapped_column(
+        SAEnum(PaymentStatus),
+        default=PaymentStatus.INITIATED,
+        index=True,
+    )
+
+    provider_status: Mapped[str | None] = mapped_column(
+        String(80),
+        nullable=True,
+    )
+
+    failure_reason: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    initiated_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+
+class PayoutProfile(
+    Base,
+    TimestampMixin,
+):
+    __tablename__ = "payout_profiles"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    recipient_type: Mapped[PayoutRecipientType] = mapped_column(
+        SAEnum(PayoutRecipientType),
+        index=True,
+    )
+
+    supplier_id: Mapped[int | None] = mapped_column(
+        ForeignKey("suppliers.id"),
+        nullable=True,
+        index=True,
+    )
+
+    driver_id: Mapped[int | None] = mapped_column(
+        ForeignKey("drivers.id"),
+        nullable=True,
+        index=True,
+    )
+
+    provider: Mapped[str] = mapped_column(
+        String(40),
+        default="hubtel",
+    )
+
+    destination_type: Mapped[str] = mapped_column(
+        String(30),
+        default="momo",
+    )
+
+    payment_phone: Mapped[str] = mapped_column(
+        String(30),
+    )
+
+    payment_name: Mapped[str] = mapped_column(
+        String(160),
+    )
+
+    network: Mapped[str | None] = mapped_column(
+        String(40),
+        nullable=True,
+    )
+
+    provider_recipient_id: Mapped[str | None] = mapped_column(
+        String(160),
+        nullable=True,
+    )
+
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        index=True,
+    )
+
+    verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    verified_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+
+    is_locked: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        index=True,
+    )
+
+    locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    locked_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        index=True,
+    )
+
+    version: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
+    )
+
+    notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+
+class Payout(
+    Base,
+    TimestampMixin,
+):
+    __tablename__ = "payouts"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    payout_profile_id: Mapped[int] = mapped_column(
+        ForeignKey("payout_profiles.id"),
+        index=True,
+    )
+
+    recipient_type: Mapped[PayoutRecipientType] = mapped_column(
+        SAEnum(PayoutRecipientType),
+        index=True,
+    )
+
+    supplier_id: Mapped[int | None] = mapped_column(
+        ForeignKey("suppliers.id"),
+        nullable=True,
+        index=True,
+    )
+
+    driver_id: Mapped[int | None] = mapped_column(
+        ForeignKey("drivers.id"),
+        nullable=True,
+        index=True,
+    )
+
+    order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("orders.id"),
+        nullable=True,
+        index=True,
+    )
+
+    delivery_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("delivery_batches.id"),
+        nullable=True,
+        index=True,
+    )
+
+    amount: Mapped[float] = mapped_column(
+        Numeric(12, 2),
+    )
+
+    currency: Mapped[str] = mapped_column(
+        String(8),
+        default="GHS",
+    )
+
+    reason: Mapped[str] = mapped_column(
+        String(80),
+    )
+
+    client_reference: Mapped[str] = mapped_column(
+        String(120),
+        unique=True,
+        index=True,
+    )
+
+    provider_transaction_id: Mapped[str | None] = mapped_column(
+        String(160),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
+
+    status: Mapped[PayoutStatus] = mapped_column(
+        SAEnum(PayoutStatus),
+        default=PayoutStatus.PENDING_APPROVAL,
+        index=True,
+    )
+
+    approved_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    initiated_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    failure_reason: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+
+class PaymentEvent(
+    Base,
+    TimestampMixin,
+):
+    __tablename__ = "payment_events"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    provider: Mapped[str] = mapped_column(
+        String(40),
+        default="hubtel",
+    )
+
+    provider_event_id: Mapped[str] = mapped_column(
+        String(180),
+        unique=True,
+        index=True,
+    )
+
+    event_type: Mapped[str] = mapped_column(
+        String(100),
+        index=True,
+    )
+
+    payment_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payment_transactions.id"),
+        nullable=True,
+        index=True,
+    )
+
+    payout_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payouts.id"),
+        nullable=True,
+        index=True,
+    )
+
+    raw_payload: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    is_processed: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        index=True,
+    )
+
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    processing_error: Mapped[str | None] = mapped_column(
+        Text,
         nullable=True,
     )
