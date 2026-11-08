@@ -432,7 +432,7 @@ export default function PaymentsPage() {
 
       const created =
         await api<{
-          id: number;
+          payout_profile_id: number;
         }>(
           "/payments/payout-profiles",
           {
@@ -468,7 +468,7 @@ export default function PaymentsPage() {
         );
 
       await api(
-        `/payments/payout-profiles/${created.id}/manual-verify-and-lock`,
+        `/payments/payout-profiles/${created.payout_profile_id}/manual-verify-and-lock`,
         {
           method: "POST",
         }

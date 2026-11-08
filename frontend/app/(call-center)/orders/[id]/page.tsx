@@ -276,6 +276,11 @@ export default function OrderWorkspacePage() {
 
 
   const [
+    expectedPayerName,
+    setExpectedPayerName,
+  ] = useState("");
+
+  const [
     expectedPayerPhone,
     setExpectedPayerPhone,
   ] = useState("");
@@ -1355,7 +1360,7 @@ export default function OrderWorkspacePage() {
           transaction_id: number;
           status: string;
           amount: string;
-          payer_phone: string;
+          payer_phone: string | null;
           already_exists: boolean;
         }>(
           `/payments/orders/${order.id}/expect-sms-payment`,
@@ -1363,8 +1368,12 @@ export default function OrderWorkspacePage() {
             method: "POST",
 
             body: JSON.stringify({
+              payer_name:
+                expectedPayerName.trim(),
+
               customer_phone:
-                expectedPayerPhone.trim(),
+                expectedPayerPhone.trim()
+                  || null,
 
               network:
                 expectedPayerNetwork.trim(),
@@ -1375,7 +1384,7 @@ export default function OrderWorkspacePage() {
       setMessage(
         result.already_exists
           ? "StoreDash is already watching for this order payment."
-          : `Payment watch started for ${result.payer_phone}.`
+          : `Payment watch started for ${expectedPayerName.trim()}.`
       );
 
     } catch (error) {
@@ -2750,7 +2759,7 @@ export default function OrderWorkspacePage() {
                 value={
                   expectedPayerPhone
                 }
-                placeholder="Payer phone — e.g. 0241234567"
+                placeholder="Payer phone — optional"
                 onChange={
                   event =>
                     setExpectedPayerPhone(
@@ -2803,9 +2812,9 @@ export default function OrderWorkspacePage() {
                   margin: 0,
                 }}
               >
-                If the customer pays from a different
-                number, StoreDash will send it to
-                verification instead of guessing.
+                StoreDash uses the payer name, amount,
+                phone when available, and transaction
+                timing to match the payment safely.
               </p>
             </div>
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.sms_payment_relay import payer_name_similarity
+
 from datetime import datetime
 import hashlib
 import hmac
@@ -2688,8 +2690,13 @@ def hubtel_payout_callback(
 
 
 class ExpectedSmsPaymentRequest(BaseModel):
-    customer_phone: str = Field(
-        min_length=10,
+    payer_name: str = Field(
+        min_length=2,
+        max_length=160,
+    )
+
+    customer_phone: str | None = Field(
+        default=None,
         max_length=30,
     )
 
@@ -2784,8 +2791,17 @@ def expect_sms_payment(
             ),
         )
 
-    phone = normalize_ghana_phone(
-        payload.customer_phone
+    phone = (
+        normalize_ghana_phone(
+            payload.customer_phone
+        )
+        if payload.customer_phone
+        else None
+    )
+
+    expected_payer_name = (
+        payload.payer_name
+        .strip()
     )
 
     existing = db.scalars(
@@ -2853,6 +2869,9 @@ def expect_sms_payment(
 
         payer_phone=
             phone,
+
+        expected_payer_name=
+            expected_payer_name,
 
         status=
             PaymentStatus.PENDING,
@@ -2963,11 +2982,33 @@ def receive_sms_relay_event(
                 "payment-message sender.",
         }
 
+    parsed = parse_money_sms(
+        payload.body
+    )
+
     fingerprint = message_fingerprint(
         sender=payload.sender,
         body=payload.body,
         received_at=payload.received_at,
     )
+
+    if (
+        parsed is not None
+        and parsed.transaction_reference
+    ):
+        reference_key = (
+            f"{sender}|"
+            f"{parsed.transaction_reference.strip().lower()}"
+        )
+
+        provider_event_id = (
+            "sms-ref:"
+            + hashlib.sha256(
+                reference_key.encode("utf-8")
+            ).hexdigest()
+        )
+    else:
+        provider_event_id = fingerprint
 
     duplicate_event = db.scalars(
         select(
@@ -2975,7 +3016,7 @@ def receive_sms_relay_event(
         )
         .where(
             PaymentEvent.provider_event_id
-            == fingerprint
+            == provider_event_id
         )
     ).first()
 
@@ -2985,16 +3026,12 @@ def receive_sms_relay_event(
             "duplicate": True,
         }
 
-    parsed = parse_money_sms(
-        payload.body
-    )
-
     event = PaymentEvent(
         provider=
             "sms_relay",
 
         provider_event_id=
-            fingerprint,
+            provider_event_id,
 
         event_type=
             (
@@ -3055,35 +3092,14 @@ def receive_sms_relay_event(
     # --------------------------------------------------------
 
     if parsed.direction == "incoming":
-        if parsed.phone is None:
-            event.processing_error = (
-                "Incoming payment has no usable "
-                "payer phone number."
-            )
+        amount_window = Decimal("10.00")
 
-            db.commit()
-
-            return {
-                "accepted": True,
-                "matched": False,
-                "reason":
-                    event.processing_error,
-            }
-
-        candidates = list(
+        possible_candidates = list(
             db.scalars(
-                select(
-                    PaymentTransaction
-                )
+                select(PaymentTransaction)
                 .where(
                     PaymentTransaction.provider
                     == "sms_relay",
-
-                    PaymentTransaction.payer_phone
-                    == parsed.phone,
-
-                    PaymentTransaction.amount
-                    == parsed.amount,
 
                     PaymentTransaction.status.in_(
                         {
@@ -3095,13 +3111,170 @@ def receive_sms_relay_event(
                 .order_by(
                     PaymentTransaction.id.desc()
                 )
+                .limit(100)
             ).all()
         )
 
-        if len(candidates) != 1:
+        scored_candidates = []
+
+        for candidate in possible_candidates:
+            if (
+                parsed.phone is not None
+                and candidate.payer_phone is not None
+                and candidate.payer_phone
+                != parsed.phone
+            ):
+                continue
+
+            expected_amount = Decimal(
+                str(candidate.amount)
+            ).quantize(
+                Decimal("0.01")
+            )
+
+            already_received = Decimal(
+                str(
+                    candidate.received_amount
+                    or 0
+                )
+            ).quantize(
+                Decimal("0.01")
+            )
+
+            remaining_amount = max(
+                Decimal("0.00"),
+                expected_amount
+                - already_received,
+            )
+
+            if remaining_amount <= 0:
+                continue
+
+            amount_difference = abs(
+                remaining_amount
+                - parsed.amount
+            )
+
+            if amount_difference > amount_window:
+                continue
+
+            amount_score = max(
+                0.0,
+                40.0
+                * (
+                    1.0
+                    - float(
+                        amount_difference
+                        / amount_window
+                    )
+                ),
+            )
+
+            name_similarity = (
+                payer_name_similarity(
+                    candidate.expected_payer_name,
+                    parsed.payer_name,
+                )
+            )
+
+            name_score = (
+                45.0
+                * name_similarity
+            )
+
+            phone_exact = (
+                parsed.phone is not None
+                and candidate.payer_phone
+                == parsed.phone
+            )
+
+            phone_score = (
+                35.0
+                if phone_exact
+                else 0.0
+            )
+
+            recency_score = 0.0
+
+            if candidate.initiated_at:
+                age_seconds = max(
+                    0.0,
+                    (
+                        now
+                        - candidate.initiated_at
+                    ).total_seconds(),
+                )
+
+                if age_seconds <= 7200:
+                    recency_score = 10.0
+                elif age_seconds <= 43200:
+                    recency_score = 5.0
+
+            score = (
+                amount_score
+                + name_score
+                + phone_score
+                + recency_score
+            )
+
+            scored_candidates.append(
+                (
+                    score,
+                    candidate,
+                    name_similarity,
+                    amount_difference,
+                )
+            )
+
+        scored_candidates.sort(
+            key=lambda item: (
+                item[0],
+                item[1].id,
+            ),
+            reverse=True,
+        )
+
+        if not scored_candidates:
             event.processing_error = (
-                "Incoming payment could not be "
-                "matched uniquely to one order."
+                "No plausible pending payment "
+                "matched this SMS."
+            )
+
+            db.commit()
+
+            return {
+                "accepted": True,
+                "matched": False,
+                "candidate_count": 0,
+                "reason":
+                    event.processing_error,
+            }
+
+        (
+            best_score,
+            transaction,
+            best_name_similarity,
+            best_amount_difference,
+        ) = scored_candidates[0]
+
+        second_score = (
+            scored_candidates[1][0]
+            if len(scored_candidates) > 1
+            else None
+        )
+
+        if (
+            best_score < 75.0
+            or (
+                second_score is not None
+                and best_score
+                - second_score
+                < 15.0
+            )
+        ):
+            event.processing_error = (
+                "Payment match is ambiguous "
+                "and needs verification."
             )
 
             db.commit()
@@ -3110,12 +3283,34 @@ def receive_sms_relay_event(
                 "accepted": True,
                 "matched": False,
                 "candidate_count":
-                    len(candidates),
+                    len(scored_candidates),
+                "best_score":
+                    round(best_score, 2),
                 "reason":
                     event.processing_error,
             }
 
-        transaction = candidates[0]
+        expected_amount = Decimal(
+            str(transaction.amount)
+        ).quantize(
+            Decimal("0.01")
+        )
+
+        previous_received = Decimal(
+            str(
+                transaction.received_amount
+                or 0
+            )
+        ).quantize(
+            Decimal("0.01")
+        )
+
+        total_received = (
+            previous_received
+            + parsed.amount
+        ).quantize(
+            Decimal("0.01")
+        )
 
         provider_transaction_id = (
             "sms:"
@@ -3174,6 +3369,89 @@ def receive_sms_relay_event(
                     event.processing_error,
             }
 
+        transaction.received_amount = (
+            total_received
+        )
+
+        if parsed.payer_name:
+            transaction.received_payer_name = (
+                parsed.payer_name
+            )
+
+        if (
+            parsed.phone
+            and not transaction.payer_phone
+        ):
+            transaction.payer_phone = (
+                parsed.phone
+            )
+
+        order.payment_amount = (
+            total_received
+        )
+
+        order.payment_method = (
+            "sms_relay"
+        )
+
+        order.payment_reference = (
+            parsed.transaction_reference
+        )
+
+        if total_received < expected_amount:
+            remaining_amount = (
+                expected_amount
+                - total_received
+            ).quantize(
+                Decimal("0.01")
+            )
+
+            transaction.provider_status = (
+                "sms_partial"
+            )
+
+            transaction.failure_reason = None
+
+            order.payment_notes = (
+                "Partial payment automatically "
+                "matched from the StoreDash "
+                "payment phone. "
+                f"Received GHS {total_received}; "
+                f"remaining GHS {remaining_amount}."
+            )
+
+            event.payment_transaction_id = (
+                transaction.id
+            )
+
+            event.is_processed = True
+            event.processed_at = now
+            event.processing_error = None
+
+            db.commit()
+
+            return {
+                "accepted": True,
+                "matched": True,
+                "direction": "incoming",
+                "order_id": order.id,
+                "payment_transaction_id":
+                    transaction.id,
+                "status": "partial_payment",
+                "received_amount":
+                    str(total_received),
+                "remaining_amount":
+                    str(remaining_amount),
+            }
+
+        overpayment_amount = max(
+            Decimal("0.00"),
+            total_received
+            - expected_amount,
+        ).quantize(
+            Decimal("0.01")
+        )
+
         transaction.status = (
             PaymentStatus.SUCCEEDED
         )
@@ -3190,21 +3468,16 @@ def receive_sms_relay_event(
 
         transaction.failure_reason = None
 
-        order.payment_amount = (
-            transaction.amount
-        )
-
-        order.payment_method = (
-            "sms_relay"
-        )
-
-        order.payment_reference = (
-            parsed.transaction_reference
-        )
-
         order.payment_notes = (
             "Automatically matched from "
             "the StoreDash payment phone."
+            if overpayment_amount == 0
+            else (
+                "Automatically matched from "
+                "the StoreDash payment phone. "
+                f"Overpayment GHS "
+                f"{overpayment_amount}."
+            )
         )
 
         order.payment_confirmed_at = now

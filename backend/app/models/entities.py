@@ -3707,6 +3707,21 @@ class PaymentTransaction(
         nullable=True,
     )
 
+    expected_payer_name: Mapped[str | None] = mapped_column(
+        String(160),
+        nullable=True,
+    )
+
+    received_payer_name: Mapped[str | None] = mapped_column(
+        String(160),
+        nullable=True,
+    )
+
+    received_amount: Mapped[float | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+
     status: Mapped[PaymentStatus] = mapped_column(
         SAEnum(PaymentStatus),
         default=PaymentStatus.INITIATED,
