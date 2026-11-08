@@ -3272,6 +3272,10 @@ def receive_sms_relay_event(
                 < 15.0
             )
         ):
+            event.payment_transaction_id = (
+                transaction.id
+            )
+
             event.processing_error = (
                 "Payment match is ambiguous "
                 "and needs verification."
@@ -3729,6 +3733,15 @@ def sms_relay_verification_queue(
             )
         )
 
+        suggested_transaction = (
+            db.get(
+                PaymentTransaction,
+                event.payment_transaction_id,
+            )
+            if event.payment_transaction_id
+            else None
+        )
+
         results.append(
             {
                 "id":
@@ -3786,12 +3799,56 @@ def sms_relay_verification_queue(
                 "reason":
                     event.processing_error,
 
+                "payer_name":
+                    (
+                        parsed.payer_name
+                        if parsed
+                        else None
+                    ),
+
+                "suggested_order_id":
+                    (
+                        suggested_transaction.order_id
+                        if suggested_transaction
+                        else None
+                    ),
+
+                "expected_payer_name":
+                    (
+                        suggested_transaction.expected_payer_name
+                        if suggested_transaction
+                        else None
+                    ),
+
                 "can_resolve":
                     (
                         request.state.user_role
                         in {
                             Role.ADMIN.value,
                             Role.MANAGER.value,
+                        }
+                        or (
+                            request.state.user_role
+                            == Role.OPERATIONS.value
+                            and suggested_transaction
+                            is not None
+                            and event.processing_error
+                            != (
+                                "Operator marked not sure; "
+                                "manager review required."
+                            )
+                        )
+                    ),
+
+                "can_defer":
+                    (
+                        suggested_transaction
+                        is not None
+                        and request.state.user_role
+                        in {
+                            Role.ADMIN.value,
+                            Role.MANAGER.value,
+                            Role.OPERATIONS.value,
                         }
                     ),
             }
@@ -3807,6 +3864,63 @@ def sms_relay_verification_queue(
 
 
 @router.post(
+    "/sms-relay/events/{event_id}/not-sure",
+)
+def defer_sms_suggested_match(
+    event_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    require_payment_operator(
+        request,
+        db,
+    )
+
+    event = db.get(
+        PaymentEvent,
+        event_id,
+    )
+
+    if event is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Payment event not found.",
+        )
+
+    if (
+        event.provider != "sms_relay"
+        or event.is_processed
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Payment event cannot be deferred."
+            ),
+        )
+
+    if event.payment_transaction_id is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "StoreDash has no suggested "
+                "match for this event."
+            ),
+        )
+
+    event.processing_error = (
+        "Operator marked not sure; "
+        "manager review required."
+    )
+
+    db.commit()
+
+    return {
+        "event_id": event.id,
+        "status": "manager_review",
+    }
+
+
+@router.post(
     "/sms-relay/events/{event_id}/resolve-incoming",
 )
 def resolve_sms_incoming_payment(
@@ -3815,7 +3929,7 @@ def resolve_sms_incoming_payment(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    actor = require_finance_manager(
+    actor = require_payment_operator(
         request,
         db,
     )
@@ -3848,6 +3962,37 @@ def resolve_sms_incoming_payment(
                 "been processed."
             ),
         )
+
+    if (
+        request.state.user_role
+        == Role.OPERATIONS.value
+    ):
+        if event.payment_transaction_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "StoreDash has no suggested "
+                    "match for this event."
+                ),
+            )
+
+        suggested_transaction = db.get(
+            PaymentTransaction,
+            event.payment_transaction_id,
+        )
+
+        if (
+            suggested_transaction is None
+            or suggested_transaction.order_id
+            != payload.order_id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Operators can only approve "
+                    "the StoreDash suggested match."
+                ),
+            )
 
     try:
         raw = json.loads(

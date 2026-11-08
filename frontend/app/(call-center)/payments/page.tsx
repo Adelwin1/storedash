@@ -117,8 +117,12 @@ type VerificationEvent = {
   amount: string | null;
   phone: string | null;
   transaction_reference: string | null;
+  payer_name: string | null;
+  suggested_order_id: number | null;
+  expected_payer_name: string | null;
   reason: string | null;
   can_resolve: boolean;
+  can_defer: boolean;
 };
 
 
@@ -277,64 +281,35 @@ export default function PaymentsPage() {
   }
 
 
-  async function resolveVerificationEvent(
+  async function approveVerificationEvent(
     event: VerificationEvent
   ) {
-    if (!event.can_resolve) {
+    if (
+      !event.can_resolve
+      || !event.suggested_order_id
+    ) {
       return;
     }
-
-    const orderId =
-      window.prompt(
-        "Enter the StoreDash order ID this payment belongs to:"
-      );
-
-    if (!orderId) {
-      return;
-    }
-
-    const parsedOrderId =
-      Number(orderId);
 
     if (
-      !Number.isInteger(
-        parsedOrderId
+      !window.confirm(
+        `Approve StoreDash match to order #${event.suggested_order_id}?`
       )
-      || parsedOrderId <= 0
     ) {
-      setError(
-        "Enter a valid StoreDash order ID."
-      );
-
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        `Attach this GH₵${Number(
-          event.amount ?? 0
-        ).toFixed(2)} payment to order #${parsedOrderId}?`
-      );
-
-    if (!confirmed) {
       return;
     }
 
     try {
-      setResolvingEventId(
-        event.id
-      );
-
+      setResolvingEventId(event.id);
       setError("");
 
       await api(
         `/payments/sms-relay/events/${event.id}/resolve-incoming`,
         {
           method: "POST",
-
           body: JSON.stringify({
             order_id:
-              parsedOrderId,
+              event.suggested_order_id,
           }),
         }
       );
@@ -346,13 +321,44 @@ export default function PaymentsPage() {
       setError(
         err instanceof Error
           ? err.message
-          : "Could not resolve payment."
+          : "Could not approve payment match."
       );
 
     } finally {
-      setResolvingEventId(
-        null
+      setResolvingEventId(null);
+    }
+  }
+
+
+  async function deferVerificationEvent(
+    event: VerificationEvent
+  ) {
+    if (!event.can_defer) {
+      return;
+    }
+
+    try {
+      setResolvingEventId(event.id);
+      setError("");
+
+      await api(
+        `/payments/sms-relay/events/${event.id}/not-sure`,
+        {
+          method: "POST",
+        }
       );
+
+      await loadVerificationQueue();
+
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not send payment to manager review."
+      );
+
+    } finally {
+      setResolvingEventId(null);
     }
   }
 
@@ -1281,28 +1287,55 @@ export default function PaymentsPage() {
                                 <TableCell>
                                   {
                                     event.can_resolve
+                                    && event.suggested_order_id
                                       ? (
-                                        <button
-                                          type="button"
-                                          className="btn"
-                                          disabled={
-                                            resolvingEventId
-                                            === event.id
-                                          }
-                                          onClick={
-                                            () =>
-                                              void resolveVerificationEvent(
-                                                event
-                                              )
-                                          }
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            gap: 8,
+                                            flexWrap: "wrap",
+                                          }}
                                         >
+                                          <button
+                                            type="button"
+                                            className="btn"
+                                            disabled={
+                                              resolvingEventId
+                                              === event.id
+                                            }
+                                            onClick={
+                                              () =>
+ void approveVerificationEvent(
+   event
+ )
+                                            }
+                                          >
+                                            Approve
+                                          </button>
+
                                           {
-                                            resolvingEventId
-                                            === event.id
-                                              ? "Resolving..."
-                                              : "Resolve"
+                                            event.can_defer
+                                              ? (
+                                                <button
+                                                  type="button"
+                                                  className="btn"
+                                                  disabled={
+                                                    resolvingEventId
+                                                    === event.id
+                                                  }
+                                                  onClick={
+                                                    () =>
+ void deferVerificationEvent(
+   event
+ )
+                                                  }
+                                                >
+                                                  Not sure
+                                                </button>
+                                              )
+                                              : null
                                           }
-                                        </button>
+                                        </div>
                                       )
                                       : (
                                         <span className="label">
