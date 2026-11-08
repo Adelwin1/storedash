@@ -56,6 +56,7 @@ type OutgoingPayout = {
   amount: string;
   currency: string;
   reason: string;
+  client_reference: string;
   status: string;
   recipient_name: string | null;
   recipient_phone: string | null;
@@ -154,6 +155,13 @@ export default function PaymentsPage() {
     error,
     setError,
   ] = useState("");
+
+  const [
+    approvingPayoutId,
+    setApprovingPayoutId,
+  ] = useState<number | null>(
+    null
+  );
 
   const [
     recordingPayoutId,
@@ -504,11 +512,50 @@ export default function PaymentsPage() {
   }
 
 
+  async function approveSupplierPayout(
+    payout: OutgoingPayout
+  ) {
+    if (!data?.can_control_money) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Approve GH₵${Number(payout.amount).toFixed(2)} for ${payout.recipient_name ?? payout.recipient_phone ?? "this supplier"}?\n\nReference: ${payout.client_reference}`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setApprovingPayoutId(payout.id);
+      setError("");
+
+      await api(
+        `/payments/payouts/${payout.id}/approve`,
+        {
+          method: "POST",
+        }
+      );
+
+      await loadDashboard(true);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not approve payout."
+      );
+    } finally {
+      setApprovingPayoutId(null);
+    }
+  }
+
+
   async function recordExternalPayout(
     payout: OutgoingPayout
   ) {
     if (
-      !data?.can_control_money
+      data?.role !== "admin"
     ) {
       return;
     }
@@ -1076,45 +1123,80 @@ export default function PaymentsPage() {
                             </TableCell>
 
                             <TableCell>
-                              {
-                                payout.can_control
-                                && payout.status
-                                  !== "succeeded"
-                                && payout.status
-                                  !== "cancelled"
-                                  ? (
-                                    <button
-                                      type="button"
-                                      className="btn"
-                                      disabled={
-                                        recordingPayoutId
-                                        === payout.id
-                                      }
-                                      onClick={() =>
-                                        void recordExternalPayout(
-                                          payout
-                                        )
-                                      }
+                              {payout.status === "pending_approval"
+                                && payout.can_control ? (
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    disabled={
+                                      approvingPayoutId === payout.id
+                                    }
+                                    onClick={() =>
+                                      void approveSupplierPayout(
+                                        payout
+                                      )
+                                    }
+                                  >
+                                    {approvingPayoutId === payout.id
+                                      ? "Approving..."
+                                      : "Approve / Ready to Send"}
+                                  </button>
+                                ) : payout.status === "approved"
+                                  || payout.status === "processing" ? (
+                                    <div
+                                      style={{
+                                        display: "grid",
+                                        gap: 6,
+                                      }}
                                     >
-                                      {
-                                        recordingPayoutId
-                                        === payout.id
-                                          ? "Recording..."
-                                          : "Record Paid"
-                                      }
-                                    </button>
-                                  )
-                                  : (
+                                      <strong>
+                                        Ready to send
+                                      </strong>
+
+                                      <span className="label">
+                                        Send GH₵{Number(
+                                          payout.amount
+                                        ).toFixed(2)} to {
+                                          payout.recipient_name
+                                          ?? "supplier"
+                                        } ({payout.recipient_phone})
+                                      </span>
+
+                                      <span className="label">
+                                        Reference: {
+                                          payout.client_reference
+                                        }
+                                      </span>
+
+                                      <span className="label">
+                                        Waiting for SMS confirmation
+                                      </span>
+
+                                      {data?.role === "admin" && (
+                                        <button
+                                          type="button"
+                                          className="btn"
+                                          disabled={
+                                            recordingPayoutId
+                                            === payout.id
+                                          }
+                                          onClick={() =>
+                                            void recordExternalPayout(
+                                              payout
+                                            )
+                                          }
+                                        >
+                                          Admin override
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : (
                                     <span className="label">
-                                      {
-                                        payout.status
-                                        === "succeeded"
-                                          ? "Paid"
-                                          : "View only"
-                                      }
+                                      {payout.status === "succeeded"
+                                        ? `Paid — ${payout.client_reference}`
+                                        : "View only"}
                                     </span>
-                                  )
-                              }
+                                  )}
                             </TableCell>
                           </tr>
                         )

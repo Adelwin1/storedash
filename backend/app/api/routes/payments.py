@@ -399,6 +399,9 @@ def payment_dashboard(
             "reason":
                 payout.reason,
 
+            "client_reference":
+                payout.client_reference,
+
             "status":
                 value(
                     payout.status
@@ -2033,8 +2036,9 @@ def prepare_supplier_payouts(
             continue
 
         client_reference = (
-            f"sds-{order.id}-{supplier_id}-"
-            f"{uuid4().hex[:12]}"
+            f"SD-PAYOUT-{order.id:06d}-"
+            f"S{supplier_id}-"
+            f"{uuid4().hex[:6].upper()}"
         )
 
         payout = Payout(
@@ -2188,135 +2192,31 @@ def approve_supplier_payout(
 
     now = datetime.utcnow()
 
-    # Lock the approval BEFORE contacting the provider.
-    # This prevents a double-click or concurrent request
-    # from sending the same payout twice.
     payout.approved_by_id = actor.id
     payout.approved_at = now
-    payout.initiated_at = now
-    payout.status = PayoutStatus.PROCESSING
-
-    db.commit()
-
-    callback_url = (
-        settings.hubtel_callback_base_url.rstrip("/")
-        + "/api/payments/hubtel/payouts/callback"
-    )
-
-    try:
-        result = hubtel.send_money(
-            recipient_name=
-                profile.payment_name,
-            recipient_phone=
-                profile.payment_phone,
-            channel=
-                profile.network or "",
-            amount=
-                amount,
-            description=(
-                f"StoreDash supplier payout "
-                f"#{payout.id}"
-            ),
-            client_reference=
-                payout.client_reference,
-            callback_url=
-                callback_url,
-        )
-    except HubtelError as exc:
-        # Outcome could be unknown after timeout.
-        # Keep PROCESSING so nobody can approve/send
-        # this payout again blindly.
-        payout.failure_reason = (
-            "Provider result unresolved: "
-            + str(exc)
-        )
-        db.commit()
-
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "message":
-                    "Payout result is unresolved. "
-                    "Do not resend this payout.",
-                "payout_id":
-                    payout.id,
-                "client_reference":
-                    payout.client_reference,
-            },
-        ) from exc
-
-    response_code = str(
-        result.get("ResponseCode", "")
-    ).strip()
-
-    data = result.get("Data") or {}
-
-    if not isinstance(data, dict):
-        data = {}
-
-    provider_transaction_id = str(
-        data.get("TransactionId")
-        or data.get("TransactionID")
-        or ""
-    ).strip()
-
-    if provider_transaction_id:
-        payout.provider_transaction_id = (
-            provider_transaction_id
-        )
-
-    if response_code == "0001":
-        payout.status = (
-            PayoutStatus.PROCESSING
-        )
-        payout.failure_reason = None
-
-    elif response_code == "2001":
-        payout.status = (
-            PayoutStatus.FAILED
-        )
-        payout.failure_reason = str(
-            data.get("Description")
-            or result.get("Message")
-            or "Provider rejected payout."
-        )
-
-    else:
-        # Unknown result is never treated as success.
-        payout.status = (
-            PayoutStatus.PROCESSING
-        )
-        payout.failure_reason = (
-            "Unexpected provider response; "
-            "reconciliation required."
-        )
+    payout.initiated_at = None
+    payout.status = PayoutStatus.APPROVED
+    payout.failure_reason = None
 
     db.commit()
     db.refresh(payout)
 
     return {
-        "payout_id":
-            payout.id,
-        "supplier_id":
-            payout.supplier_id,
-        "amount":
-            str(payout.amount),
-        "status":
-            payout.status.value,
-        "client_reference":
-            payout.client_reference,
-        "destination":
-            "****"
-            + profile.payment_phone[-4:],
+        "payout_id": payout.id,
+        "supplier_id": payout.supplier_id,
+        "order_id": payout.order_id,
+        "amount": str(payout.amount),
+        "status": payout.status.value,
+        "client_reference": payout.client_reference,
+        "recipient_name": profile.payment_name,
+        "recipient_phone": profile.payment_phone,
+        "network": profile.network,
+        "message": (
+            "Approved for manual send. "
+            "Send from the StoreDash payment phone; "
+            "SMS confirmation will complete the payout."
+        ),
     }
-
-
-class ExternalPayoutRecordRequest(BaseModel):
-    transaction_reference: str = Field(
-        min_length=1,
-        max_length=100,
-    )
-
 
 @router.post(
     "/payouts/{payout_id}/record-external",
