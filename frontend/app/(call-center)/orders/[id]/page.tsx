@@ -337,6 +337,11 @@ export default function OrderWorkspacePage() {
 
 
   const [
+    paymentToast,
+    setPaymentToast,
+  ] = useState("");
+
+  const [
     error,
     setError,
   ] = useState("");
@@ -459,6 +464,65 @@ export default function OrderWorkspacePage() {
     }
 
   }, [params.id]);
+
+
+  useEffect(() => {
+    if (
+      !params.id
+      || order?.status !== "awaiting_payment"
+    ) {
+      return;
+    }
+
+    const intervalId =
+      window.setInterval(
+        async () => {
+          try {
+            const latest =
+              await api<WorkflowOrder>(
+                `/orders/${params.id}`
+              );
+
+            if (
+              latest.status !==
+              "awaiting_payment"
+            ) {
+              setOrder(latest);
+
+              if (
+                latest.status ===
+                "payment_confirmed"
+              ) {
+                setMessage(
+                  "Payment confirmed automatically from SMS."
+                );
+
+                setPaymentToast(
+                  "Payment confirmed — moving to the next order stage."
+                );
+
+                window.setTimeout(
+                  () => setPaymentToast(""),
+                  4500
+                );
+              }
+            }
+          } catch {
+            // Keep polling. A temporary network
+            // failure should not interrupt the workflow.
+          }
+        },
+        2000
+      );
+
+    return () =>
+      window.clearInterval(
+        intervalId
+      );
+  }, [
+    params.id,
+    order?.status,
+  ]);
 
 
   const editable =
@@ -1343,9 +1407,9 @@ export default function OrderWorkspacePage() {
       return;
     }
 
-    if (!expectedPayerPhone.trim()) {
+    if (!expectedPayerName.trim()) {
       setError(
-        "Enter the phone number the customer will pay from."
+        "Enter the MoMo account name the customer will pay from."
       );
 
       return;
@@ -1746,6 +1810,24 @@ export default function OrderWorkspacePage() {
         </button>
       </div>
 
+
+      {paymentToast && (
+        <div
+          style={{
+            position: "fixed",
+            top: 20,
+            right: 20,
+            zIndex: 9999,
+            padding: "14px 18px",
+            borderRadius: 10,
+            background: "#111",
+            color: "#fff",
+            boxShadow: "0 8px 28px rgba(0,0,0,.22)",
+          }}
+        >
+          {paymentToast}
+        </div>
+      )}
 
       {error && (
         <div
@@ -2757,6 +2839,19 @@ export default function OrderWorkspacePage() {
 
               <input
                 value={
+                  expectedPayerName
+                }
+                placeholder="MoMo account name"
+                onChange={
+                  event =>
+                    setExpectedPayerName(
+                      event.target.value
+                    )
+                }
+              />
+
+              <input
+                value={
                   expectedPayerPhone
                 }
                 placeholder="Payer phone — optional"
@@ -2805,6 +2900,18 @@ export default function OrderWorkspacePage() {
               >
                 Watch for Payment
               </button>
+
+              {message && (
+                <p style={{ margin: 0 }}>
+                  {message}
+                </p>
+              )}
+
+              {error && (
+                <p style={{ margin: 0 }}>
+                  {error}
+                </p>
+              )}
 
               <p
                 className="label"
