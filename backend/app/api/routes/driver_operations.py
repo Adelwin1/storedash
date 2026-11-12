@@ -871,6 +871,12 @@ def update_batch_stop_status(
             batch
         )
 
+        if batch.status == "completed":
+            trigger_driver_payout(
+                db,
+                batch_id=batch.id,
+            )
+
 
         return (
             batch_execution_summary(

@@ -25,6 +25,7 @@ from app.core.auth import current_user_id
 from app.core.config import settings
 from app.core.db import get_db
 from app.models import (
+    BatchOrder,
     Driver,
     Order,
     OrderStatus,
@@ -123,6 +124,30 @@ def require_finance_manager(
                 "Manager or admin financial "
                 "access required."
             ),
+        )
+
+    return user
+
+
+def require_admin_payout_override(
+    request: Request,
+    db: Session,
+) -> User:
+    user_id = current_user_id(request)
+
+    user = db.get(
+        User,
+        user_id,
+    )
+
+    if (
+        user is None
+        or not user.is_active
+        or user.role != Role.ADMIN
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required.",
         )
 
     return user
@@ -367,6 +392,22 @@ def payment_dashboard(
             else None
         )
 
+        batch_order_ids = []
+
+        if payout.delivery_batch_id is not None:
+            batch_order_ids = list(
+                db.scalars(
+                    select(BatchOrder.order_id)
+                    .where(
+                        BatchOrder.batch_id
+                        == payout.delivery_batch_id
+                    )
+                    .order_by(
+                        BatchOrder.order_id
+                    )
+                ).all()
+            )
+
         outgoing.append({
             "id":
                 payout.id,
@@ -387,6 +428,9 @@ def payment_dashboard(
 
             "delivery_batch_id":
                 payout.delivery_batch_id,
+
+            "batch_order_ids":
+                batch_order_ids,
 
             "amount":
                 str(
@@ -2093,7 +2137,7 @@ def prepare_supplier_payouts(
 @router.post(
     "/payouts/{payout_id}/approve",
 )
-def approve_supplier_payout(
+def approve_payout(
     payout_id: int,
     request: Request,
     db: Session = Depends(get_db),
@@ -2112,18 +2156,6 @@ def approve_supplier_payout(
         raise HTTPException(
             status_code=404,
             detail="Payout not found.",
-        )
-
-    if (
-        payout.recipient_type
-        != PayoutRecipientType.SUPPLIER
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "This endpoint only approves "
-                "supplier payouts."
-            ),
         )
 
     if (
@@ -2164,18 +2196,23 @@ def approve_supplier_payout(
             ),
         )
 
-    if (
-        profile.recipient_type
-        != PayoutRecipientType.SUPPLIER
-        or profile.supplier_id
-        != payout.supplier_id
-    ):
+    if payout.recipient_type == PayoutRecipientType.SUPPLIER:
+        profile_matches = (
+            profile.recipient_type == PayoutRecipientType.SUPPLIER
+            and profile.supplier_id == payout.supplier_id
+        )
+    elif payout.recipient_type == PayoutRecipientType.DRIVER:
+        profile_matches = (
+            profile.recipient_type == PayoutRecipientType.DRIVER
+            and profile.driver_id == payout.driver_id
+        )
+    else:
+        profile_matches = False
+
+    if not profile_matches:
         raise HTTPException(
             status_code=409,
-            detail=(
-                "Payout destination does not match "
-                "the supplier."
-            ),
+            detail="Payout destination does not match the payout recipient.",
         )
 
     amount = Decimal(
@@ -2217,6 +2254,76 @@ def approve_supplier_payout(
             "SMS confirmation will complete the payout."
         ),
     }
+
+@router.post(
+    "/payouts/{payout_id}/admin-override",
+)
+def admin_override_payout(
+    payout_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    actor = require_admin_payout_override(
+        request,
+        db,
+    )
+
+    payout = db.get(
+        Payout,
+        payout_id,
+    )
+
+    if payout is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Payout not found.",
+        )
+
+    if payout.status == PayoutStatus.SUCCEEDED:
+        return {
+            "id": payout.id,
+            "status": payout.status.value,
+            "already_succeeded": True,
+        }
+
+    if payout.status == PayoutStatus.CANCELLED:
+        raise HTTPException(
+            status_code=409,
+            detail="Cancelled payout cannot be overridden.",
+        )
+
+    now = datetime.utcnow()
+
+    payout.provider_transaction_id = (
+        f"admin-override:{payout.id}:"
+        f"{int(now.timestamp())}"
+    )
+
+    payout.approved_by_id = actor.id
+
+    if payout.approved_at is None:
+        payout.approved_at = now
+
+    if payout.initiated_at is None:
+        payout.initiated_at = now
+
+    payout.completed_at = now
+    payout.status = PayoutStatus.SUCCEEDED
+    payout.failure_reason = None
+
+    db.commit()
+    db.refresh(payout)
+
+    return {
+        "id": payout.id,
+        "status": payout.status.value,
+        "admin_override": True,
+        "transaction_reference":
+            payout.provider_transaction_id,
+        "completed_at":
+            payout.completed_at.isoformat(),
+    }
+
 
 @router.post(
     "/payouts/{payout_id}/record-external",

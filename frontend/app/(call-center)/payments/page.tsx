@@ -53,6 +53,7 @@ type OutgoingPayout = {
   driver_id: number | null;
   order_id: number | null;
   delivery_batch_id: number | null;
+  batch_order_ids: number[];
   amount: string;
   currency: string;
   reason: string;
@@ -512,7 +513,7 @@ export default function PaymentsPage() {
   }
 
 
-  async function approveSupplierPayout(
+  async function approvePayout(
     payout: OutgoingPayout
   ) {
     if (!data?.can_control_money) {
@@ -521,7 +522,7 @@ export default function PaymentsPage() {
 
     if (
       !window.confirm(
-        `Approve GH₵${Number(payout.amount).toFixed(2)} for ${payout.recipient_name ?? payout.recipient_phone ?? "this supplier"}?\n\nReference: ${payout.client_reference}`
+        `Approve GH₵${Number(payout.amount).toFixed(2)} for ${payout.recipient_name ?? payout.recipient_phone ?? "this recipient"}?\n\nReference: ${payout.client_reference}`
       )
     ) {
       return;
@@ -551,81 +552,47 @@ export default function PaymentsPage() {
   }
 
 
-  async function recordExternalPayout(
+  async function adminOverridePayout(
     payout: OutgoingPayout
   ) {
-    if (
-      data?.role !== "admin"
-    ) {
-      return;
-    }
-
-    const reference =
-      window.prompt(
-        `Enter the MoMo/bank transaction reference for GH₵${Number(
-          payout.amount
-        ).toFixed(2)} paid to ${
-          payout.recipient_name
-          ?? payout.recipient_phone
-          ?? "this recipient"
-        }:`
-      );
-
-    if (
-      !reference
-      || !reference.trim()
-    ) {
+    if (data?.role !== "admin") {
       return;
     }
 
     if (
       !window.confirm(
-        `Confirm that GH₵${Number(
+        `ADMIN TEST OVERRIDE: mark GH₵${Number(
           payout.amount
-        ).toFixed(2)} was actually sent to ${
+        ).toFixed(2)} for ${
           payout.recipient_name
           ?? payout.recipient_phone
           ?? "this recipient"
-        }?`
+        } as paid without SMS confirmation?`
       )
     ) {
       return;
     }
 
     try {
-      setRecordingPayoutId(
-        payout.id
-      );
-
+      setRecordingPayoutId(payout.id);
       setError("");
 
       await api(
-        `/payments/payouts/${payout.id}/record-external`,
+        `/payments/payouts/${payout.id}/admin-override`,
         {
           method: "POST",
-
-          body: JSON.stringify({
-            transaction_reference:
-              reference.trim(),
-          }),
         }
       );
 
-      await loadDashboard(
-        true
-      );
-
+      await loadDashboard(true);
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "Could not record payout."
+          : "Could not override payout."
       );
-
     } finally {
-      setRecordingPayoutId(
-        null
-      );
+      setRecordingPayoutId(null);
     }
   }
 
@@ -1046,6 +1013,10 @@ export default function PaymentsPage() {
                         </TableHead>
 
                         <TableHead>
+                          Order / Batch
+                        </TableHead>
+
+                        <TableHead>
                           Destination
                         </TableHead>
 
@@ -1095,6 +1066,25 @@ export default function PaymentsPage() {
                             </TableCell>
 
                             <TableCell>
+                              {payout.order_id ? (
+                                <Link href={`/orders/${payout.order_id}`}>
+                                  SD-{String(payout.order_id).padStart(6, "0")}
+                                </Link>
+                              ) : payout.delivery_batch_id ? (
+                                `Batch #${payout.delivery_batch_id} — ${
+                                  payout.batch_order_ids
+                                    .map(
+                                      id =>
+                                        `SD-${String(id).padStart(6, "0")}`
+                                    )
+                                    .join(", ")
+                                }`
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+
+                            <TableCell>
                               {
                                 payout.recipient_phone
                                 ?? "—"
@@ -1132,14 +1122,16 @@ export default function PaymentsPage() {
                                       approvingPayoutId === payout.id
                                     }
                                     onClick={() =>
-                                      void approveSupplierPayout(
+                                      void approvePayout(
                                         payout
                                       )
                                     }
                                   >
                                     {approvingPayoutId === payout.id
                                       ? "Approving..."
-                                      : "Approve / Ready to Send"}
+                                      : payout.recipient_type === "driver"
+                                        ? "Approve Driver"
+                                        : "Approve Supplier"}
                                   </button>
                                 ) : payout.status === "approved"
                                   || payout.status === "processing" ? (
@@ -1158,7 +1150,7 @@ export default function PaymentsPage() {
                                           payout.amount
                                         ).toFixed(2)} to {
                                           payout.recipient_name
-                                          ?? "supplier"
+                                          ?? "recipient"
                                         } ({payout.recipient_phone})
                                       </span>
 
@@ -1181,7 +1173,7 @@ export default function PaymentsPage() {
                                             === payout.id
                                           }
                                           onClick={() =>
-                                            void recordExternalPayout(
+                                            void adminOverridePayout(
                                               payout
                                             )
                                           }
@@ -1193,7 +1185,7 @@ export default function PaymentsPage() {
                                   ) : (
                                     <span className="label">
                                       {payout.status === "succeeded"
-                                        ? `Paid — ${payout.client_reference}`
+                                        ? `${payout.recipient_type === "driver" ? "Paid Driver" : "Paid Supplier"} — ${payout.client_reference}`
                                         : "View only"}
                                     </span>
                                   )}
