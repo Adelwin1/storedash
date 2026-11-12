@@ -513,45 +513,6 @@ export default function PaymentsPage() {
   }
 
 
-  async function approvePayout(
-    payout: OutgoingPayout
-  ) {
-    if (!data?.can_control_money) {
-      return;
-    }
-
-    if (
-      !window.confirm(
-        `Approve GH₵${Number(payout.amount).toFixed(2)} for ${payout.recipient_name ?? payout.recipient_phone ?? "this recipient"}?\n\nReference: ${payout.client_reference}`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      setApprovingPayoutId(payout.id);
-      setError("");
-
-      await api(
-        `/payments/payouts/${payout.id}/approve`,
-        {
-          method: "POST",
-        }
-      );
-
-      await loadDashboard(true);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not approve payout."
-      );
-    } finally {
-      setApprovingPayoutId(null);
-    }
-  }
-
-
   async function adminOverridePayout(
     payout: OutgoingPayout
   ) {
@@ -595,6 +556,182 @@ export default function PaymentsPage() {
       setRecordingPayoutId(null);
     }
   }
+
+
+  useEffect(() => {
+    if (!data) {
+      return;
+    }
+
+    const actionKeys: string[] = [];
+
+    if (data.role === "operations") {
+      const supplierGroups =
+        new Map<number, OutgoingPayout[]>();
+
+      for (const payout of data.outgoing) {
+        if (
+          payout.recipient_type !== "supplier"
+          || !payout.order_id
+        ) {
+          continue;
+        }
+
+        const group =
+          supplierGroups.get(payout.order_id)
+          ?? [];
+
+        group.push(payout);
+
+        supplierGroups.set(
+          payout.order_id,
+          group
+        );
+      }
+
+      for (
+        const [orderId, payouts]
+        of supplierGroups
+      ) {
+        if (
+          payouts.length > 0
+          && payouts.every(
+            payout =>
+              payout.status === "succeeded"
+          )
+        ) {
+          actionKeys.push(
+            `dispatch:${orderId}`
+          );
+        }
+      }
+    }
+
+    if (
+      data.role === "manager"
+      || data.role === "admin"
+    ) {
+      for (const payout of data.outgoing) {
+        if (
+          payout.recipient_type === "driver"
+          && (
+            payout.status === "pending_approval"
+            || payout.status === "approved"
+            || payout.status === "processing"
+          )
+        ) {
+          actionKeys.push(
+            `driver:${payout.id}`
+          );
+        }
+      }
+    }
+
+    actionKeys.sort();
+
+    const snapshot =
+      actionKeys.join("|");
+
+    const storageKey =
+      `storedash-actions:${data.role}`;
+
+    const previous =
+      window.sessionStorage.getItem(
+        storageKey
+      );
+
+    if (previous === null) {
+      window.sessionStorage.setItem(
+        storageKey,
+        snapshot
+      );
+      return;
+    }
+
+    const previousKeys =
+      new Set(
+        previous
+          .split("|")
+          .filter(Boolean)
+      );
+
+    const fresh =
+      actionKeys.filter(
+        item => !previousKeys.has(item)
+      );
+
+    window.sessionStorage.setItem(
+      storageKey,
+      snapshot
+    );
+
+    if (fresh.length === 0) {
+      return;
+    }
+
+    if (
+      fresh.some(
+        item =>
+          item.startsWith("driver:")
+      )
+    ) {
+      setSetupMessage(
+        "Driver payment required — send the exact amount shown below."
+      );
+    } else {
+      setSetupMessage(
+        "Supplier paid — order is ready for dispatch."
+      );
+    }
+
+    const previousTitle =
+      document.title;
+
+    document.title =
+      "● StoreDash action needed";
+
+    window.setTimeout(
+      () => {
+        document.title =
+          previousTitle;
+      },
+      6000
+    );
+
+    try {
+      const context =
+        new window.AudioContext();
+
+      const oscillator =
+        context.createOscillator();
+
+      const gain =
+        context.createGain();
+
+      oscillator.connect(gain);
+      gain.connect(
+        context.destination
+      );
+
+      gain.gain.value = 0.08;
+      oscillator.frequency.value = 880;
+
+      oscillator.start();
+
+      oscillator.stop(
+        context.currentTime + 0.18
+      );
+
+      window.setTimeout(
+        () => {
+          void context.close();
+        },
+        300
+      );
+    } catch {
+      // Browser may block sound until user interaction.
+    }
+  }, [data]);
 
 
   useEffect(() => {
@@ -1107,34 +1244,19 @@ export default function PaymentsPage() {
                             <TableCell>
                               <StatusBadge
                                 status={
-                                  payout.status
+                                  payout.status === "pending_approval"
+                                  || payout.status === "approved"
+                                  || payout.status === "processing"
+                                    ? "ready_to_send"
+                                    : payout.status
                                 }
                               />
                             </TableCell>
 
                             <TableCell>
                               {payout.status === "pending_approval"
-                                && payout.can_control ? (
-                                  <button
-                                    type="button"
-                                    className="btn"
-                                    disabled={
-                                      approvingPayoutId === payout.id
-                                    }
-                                    onClick={() =>
-                                      void approvePayout(
-                                        payout
-                                      )
-                                    }
-                                  >
-                                    {approvingPayoutId === payout.id
-                                      ? "Approving..."
-                                      : payout.recipient_type === "driver"
-                                        ? "Approve Driver"
-                                        : "Approve Supplier"}
-                                  </button>
-                                ) : payout.status === "approved"
-                                  || payout.status === "processing" ? (
+                                || payout.status === "approved"
+                                || payout.status === "processing" ? (
                                     <div
                                       style={{
                                         display: "grid",
@@ -1142,7 +1264,9 @@ export default function PaymentsPage() {
                                       }}
                                     >
                                       <strong>
-                                        Ready to send
+                                        {payout.recipient_type === "driver"
+                                          ? "Driver payment ready to send"
+                                          : "Supplier payment ready to send"}
                                       </strong>
 
                                       <span className="label">

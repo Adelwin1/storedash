@@ -3659,6 +3659,50 @@ def receive_sms_relay_event(
 
     payout.failure_reason = None
 
+    if (
+        payout.recipient_type
+        == PayoutRecipientType.SUPPLIER
+        and payout.order_id is not None
+    ):
+        remaining_supplier_payout = db.scalars(
+            select(Payout)
+            .where(
+                Payout.order_id
+                == payout.order_id,
+
+                Payout.recipient_type
+                == PayoutRecipientType.SUPPLIER,
+
+                Payout.id
+                != payout.id,
+
+                Payout.status.notin_(
+                    {
+                        PayoutStatus.SUCCEEDED,
+                        PayoutStatus.CANCELLED,
+                    }
+                ),
+            )
+        ).first()
+
+        if remaining_supplier_payout is None:
+            supplier_order = db.get(
+                Order,
+                payout.order_id,
+            )
+
+            if (
+                supplier_order is not None
+                and supplier_order.status
+                in {
+                    OrderStatus.PAYMENT_CONFIRMED,
+                    OrderStatus.PREPARING,
+                }
+            ):
+                supplier_order.status = (
+                    OrderStatus.READY_FOR_DISPATCH
+                )
+
     event.payout_id = payout.id
     event.is_processed = True
     event.processed_at = now
