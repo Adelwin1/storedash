@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { workspaceForRole } from "@/lib/workspace";
 
 type CurrentUser = {
   id: number;
@@ -41,8 +42,9 @@ export default function RoleGuard({
         }
 
         if (!allowedRoles.includes(user.role)) {
-          setForbidden(true);
-          setReady(false);
+          router.replace(
+            workspaceForRole(user.role)
+          );
           return;
         }
 

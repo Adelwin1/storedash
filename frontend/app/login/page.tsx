@@ -11,19 +11,19 @@ import {
 
 import {
   useRouter,
-  useSearchParams,
 } from "next/navigation";
 
 import {
   api,
 } from "@/lib/api";
 
+import {
+  workspaceForRole,
+} from "@/lib/workspace";
+
 
 function LoginPageContent() {
   const router = useRouter();
-  const searchParams =
-    useSearchParams();
-
   const [
     email,
     setEmail,
@@ -66,11 +66,14 @@ function LoginPageContent() {
         }
       );
 
-      const next =
-        searchParams.get("next") ||
-        "/dashboard";
+      const user = await api<{
+        role: string;
+      }>("/auth/me");
 
-      router.replace(next);
+      router.replace(
+        workspaceForRole(user.role)
+      );
+
       router.refresh();
 
     } catch (err) {
