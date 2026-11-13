@@ -365,31 +365,25 @@ def price_batch_plan(
         plan.customer_delivery_revenue
     )
 
-
-    if contribution is None:
-        contribution = (
-            revenue
-            -
-            payout
-        )
-
-    contribution = float(
-        contribution
+    # StoreDash hard rule:
+    # driver compensation can come only from delivery revenue.
+    # Service fees and other StoreDash fees are never available
+    # for driver payout.
+    payout = min(
+        max(payout, 0.0),
+        max(revenue, 0.0),
     )
 
+    contribution = (
+        revenue
+        - payout
+    )
 
-    if margin_rate is None:
-
-        margin_rate = (
-            contribution
-            /
-            revenue
-            if revenue > 0
-            else 0.0
-        )
-
-    margin_rate = float(
-        margin_rate
+    margin_rate = (
+        contribution
+        / revenue
+        if revenue > 0
+        else 0.0
     )
 
 

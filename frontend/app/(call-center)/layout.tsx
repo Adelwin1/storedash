@@ -5,6 +5,7 @@ import type {
 import RoleGuard from "@/components/RoleGuard";
 import StoreDashSidebar from "@/components/StoreDashSidebar";
 import StoreDashTopbar from "@/components/StoreDashTopbar";
+import StoreDashActionAlerts from "@/components/StoreDashActionAlerts";
 
 
 export default function CallCenterLayout({
@@ -19,6 +20,8 @@ export default function CallCenterLayout({
 
         <div className="sd-workspace">
           <StoreDashTopbar />
+
+          <StoreDashActionAlerts />
 
           <div
             className="sd-brand-background"

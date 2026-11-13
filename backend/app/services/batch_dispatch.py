@@ -542,6 +542,15 @@ def create_batch_driver_offer(
         batch.predicted_driver_payout
     )
 
+    delivery_revenue = money(
+        batch.customer_delivery_revenue
+    )
+
+    recommended = min(
+        recommended,
+        delivery_revenue,
+    )
+
     if recommended <= 0:
         raise ValueError(
             "Recommended route payout must be positive."
@@ -553,6 +562,11 @@ def create_batch_driver_offer(
         opening = money(
             opening_offer
         )
+
+    opening = min(
+        opening,
+        delivery_revenue,
+    )
 
     if opening <= 0:
         raise ValueError(
@@ -587,6 +601,12 @@ def create_batch_driver_offer(
             raise ValueError(
                 "Opening offer exceeds authorized maximum."
             )
+
+    if maximum is not None:
+        maximum = min(
+            maximum,
+            delivery_revenue,
+        )
 
     offer = BatchDriverOffer(
         batch_id=
@@ -766,6 +786,13 @@ def accept_batch_driver_offer(
         final_payout
         if final_payout is not None
         else offer.opening_offer
+    )
+
+    payout = min(
+        payout,
+        money(
+            batch.customer_delivery_revenue
+        ),
     )
 
     if payout <= 0:
