@@ -128,7 +128,7 @@ export default function CustomersPage() {
                 searchCustomers();
               }
             }}
-            placeholder="Customer #000, name, business or phone"
+            placeholder="A8, name, business or phone"
           />
 
           <button
@@ -220,8 +220,9 @@ export default function CustomersPage() {
         <h2>+ Register new caller</h2>
 
         <p className="label">
-          The customer number is generated
-          automatically, starting from 000.
+          The StoreDash customer code is generated
+          automatically and stays permanently
+          assigned to this customer.
         </p>
 
         <form
