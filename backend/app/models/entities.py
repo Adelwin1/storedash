@@ -285,7 +285,31 @@ class Business(
 
     @property
     def customer_number(self) -> str:
-        return f"{max(self.id - 1, 0):03d}"
+        if self.id is None:
+            return ""
+
+        alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+        # Offset makes customer #1 become A1.
+        value = self.id + 360
+        characters = []
+
+        while value:
+            value, remainder = divmod(value, 36)
+            characters.append(
+                alphabet[remainder]
+            )
+
+        code = "".join(
+            reversed(characters)
+        )
+
+        if len(code) > 3:
+            raise ValueError(
+                "StoreDash customer code capacity exceeded."
+            )
+
+        return code
 
 
 class Supplier(

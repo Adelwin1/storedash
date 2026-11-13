@@ -11,11 +11,31 @@ router = APIRouter(prefix="/businesses", tags=["businesses"])
 
 
 def _number_match(q: str):
-    """Translate customer number 000 -> database id 1."""
-    cleaned = q.strip()
-    if cleaned.isdigit():
-        return int(cleaned) + 1
-    return None
+    """Translate a StoreDash customer code such as A1 into its database id."""
+    cleaned = q.strip().upper()
+
+    if (
+        not cleaned
+        or len(cleaned) > 3
+        or any(
+            character not in
+            "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            for character in cleaned
+        )
+    ):
+        return None
+
+    try:
+        encoded = int(cleaned, 36)
+    except ValueError:
+        return None
+
+    customer_id = encoded - 360
+
+    if customer_id < 1:
+        return None
+
+    return customer_id
 
 
 @router.post("", response_model=BusinessRead, status_code=status.HTTP_201_CREATED)

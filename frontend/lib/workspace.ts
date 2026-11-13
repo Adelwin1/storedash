@@ -9,7 +9,7 @@ export function workspaceForRole(
       return "/field/customers";
 
     case "acquisition":
-      return "/field/suppliers";
+      return "/field";
 
     case "operations":
     case "manager":
