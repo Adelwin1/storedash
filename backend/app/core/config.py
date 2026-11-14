@@ -1,10 +1,32 @@
 from functools import lru_cache
 
+from pydantic import field_validator
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./storedash.db"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value):
+        if not isinstance(value, str):
+            return value
+
+        if value.startswith("postgres://"):
+            return (
+                "postgresql+psycopg://"
+                + value[len("postgres://"):]
+            )
+
+        if value.startswith("postgresql://"):
+            return (
+                "postgresql+psycopg://"
+                + value[len("postgresql://"):]
+            )
+
+        return value
 
     cors_origins: str = "http://localhost:3000"
 
