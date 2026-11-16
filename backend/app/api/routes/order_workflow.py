@@ -662,6 +662,18 @@ def generate_quote(
             ),
         )
 
+    # Launch rule: normal StoreDash orders must be
+    # consolidated into at most two supplier pickups.
+    if len(supplier_ids) > 2:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This order uses more than 2 suppliers. "
+                "Consolidate the order, choose a substitute, "
+                "or mark an item unavailable before quoting."
+            ),
+        )
+
 
     suppliers = []
 

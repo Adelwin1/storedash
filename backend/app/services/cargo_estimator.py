@@ -171,6 +171,34 @@ MATERIALS = {
         "handling": 1.2,
         "fragility": 0.40,
     },
+
+    "fresh_produce": {
+        "density": 0.52,
+        "fill_ratio": 0.68,
+        "handling": 1.15,
+        "fragility": 0.48,
+    },
+
+    "root_crop": {
+        "density": 0.72,
+        "fill_ratio": 0.82,
+        "handling": 1.15,
+        "fragility": 0.10,
+    },
+
+    "dried_fish": {
+        "density": 0.22,
+        "fill_ratio": 0.60,
+        "handling": 1.0,
+        "fragility": 0.30,
+    },
+
+    "rigid_household": {
+        "density": 0.18,
+        "fill_ratio": 0.42,
+        "handling": 0.95,
+        "fragility": 0.22,
+    },
 }
 
 
@@ -231,6 +259,16 @@ CATEGORY_MATERIAL = {
     "hair_extensions": "hair_light",
     "beauty_tools": "general",
     "beauty_appliances": "appliance",
+
+    "roots_tubers": "root_crop",
+    "plantain_banana": "fresh_produce",
+    "fresh_vegetables": "fresh_produce",
+    "fresh_fruits": "fresh_produce",
+    "dried_fish": "dried_fish",
+
+    "household_plastics": "rigid_household",
+    "kitchenware": "rigid_household",
+    "household_tools": "rigid_household",
 }
 
 
@@ -385,6 +423,48 @@ PACKAGE_VOLUME_L = {
         "medium": 0.25,
         "large": 0.55,
     },
+
+    "bunch": {
+        "small": 8.0,
+        "medium": 18.0,
+        "large": 30.0,
+    },
+
+    "basin": {
+        "small": 8.0,
+        "medium": 18.0,
+        "large": 35.0,
+    },
+
+    "basket": {
+        "small": 12.0,
+        "medium": 28.0,
+        "large": 55.0,
+    },
+
+    "tube": {
+        "small": 0.25,
+        "medium": 0.50,
+        "large": 0.90,
+    },
+
+    "single": {
+        "small": 0.8,
+        "medium": 2.5,
+        "large": 8.0,
+    },
+
+    "roll_on": {
+        "small": 0.20,
+        "medium": 0.35,
+        "large": 0.60,
+    },
+
+    "spray_can": {
+        "small": 0.35,
+        "medium": 0.55,
+        "large": 0.90,
+    },
 }
 
 
@@ -419,6 +499,14 @@ PACKAGE_TARE_KG = {
     "roll": 0.02,
     "loaf": 0.02,
     "bar": 0.005,
+
+    "bunch": 0.02,
+    "basin": 0.12,
+    "basket": 0.18,
+    "tube": 0.02,
+    "single": 0.02,
+    "roll_on": 0.03,
+    "spray_can": 0.04,
 }
 
 
@@ -455,6 +543,14 @@ PACKAGE_HANDLING = {
     "roll": 0.35,
     "loaf": 0.45,
     "bar": 0.10,
+
+    "bunch": 0.85,
+    "basin": 0.70,
+    "basket": 0.80,
+    "tube": 0.20,
+    "single": 0.25,
+    "roll_on": 0.20,
+    "spray_can": 0.25,
 }
 
 
@@ -472,6 +568,10 @@ PACKAGE_FRAGILITY = {
     "sack": 0.02,
 
     "bale": 0.01,
+
+    "bunch": 0.18,
+    "basin": 0.08,
+    "basket": 0.08,
 }
 
 
