@@ -91,6 +91,14 @@ class ApproveEmployeeRequest(
     role: Role = Role.OPERATIONS
 
 
+class DeactivateEmployeeRequest(
+    BaseModel
+):
+    replacement_admin_email: (
+        str | None
+    ) = None
+
+
 def serialize_user(
     user: User,
 ):
@@ -140,6 +148,151 @@ def require_admin(
         )
 
     return user
+
+
+def active_admin_users(
+    db: Session,
+):
+    return list(
+        db.scalars(
+            select(
+                User
+            )
+            .where(
+                User.role == Role.ADMIN,
+                User.is_active.is_(
+                    True
+                ),
+            )
+            .order_by(
+                User.id
+            )
+        ).all()
+    )
+
+
+def admin_replacement_required(
+    *,
+    target_role: Role,
+    target_is_active: bool,
+    active_admin_count: int,
+) -> bool:
+    return (
+        target_role == Role.ADMIN
+        and target_is_active
+        and active_admin_count <= 1
+    )
+
+
+def promote_replacement_admin(
+    *,
+    db: Session,
+    email: str,
+    target_user_id: int,
+):
+    replacement_email = (
+        validate_email(
+            email
+        )
+    )
+
+    replacement_user = db.scalar(
+        select(
+            User
+        )
+        .where(
+            User.email
+            ==
+            replacement_email
+        )
+    )
+
+    if replacement_user is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The replacement admin must already "
+                "have a StoreDash account. Ask them "
+                "to create their account first."
+            ),
+        )
+
+    if (
+        replacement_user.id
+        ==
+        target_user_id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Choose a different account as "
+                "the replacement admin."
+            ),
+        )
+
+    replacement_approval = db.scalar(
+        select(
+            ApprovedEmployee
+        )
+        .where(
+            ApprovedEmployee.email
+            ==
+            replacement_email
+        )
+    )
+
+    if replacement_approval is None:
+        replacement_approval = (
+            ApprovedEmployee(
+                email=replacement_email,
+                name=replacement_user.name,
+                role=Role.ADMIN,
+                is_active=True,
+                claimed_user_id=(
+                    replacement_user.id
+                ),
+                claimed_at=datetime.utcnow(),
+            )
+        )
+
+        db.add(
+            replacement_approval
+        )
+
+    else:
+        replacement_approval.role = (
+            Role.ADMIN
+        )
+
+        replacement_approval.is_active = (
+            True
+        )
+
+        if (
+            replacement_approval.claimed_user_id
+            is None
+        ):
+            replacement_approval.claimed_user_id = (
+                replacement_user.id
+            )
+
+        if (
+            replacement_approval.claimed_at
+            is None
+        ):
+            replacement_approval.claimed_at = (
+                datetime.utcnow()
+            )
+
+    replacement_user.role = (
+        Role.ADMIN
+    )
+
+    replacement_user.is_active = (
+        True
+    )
+
+    return replacement_user
 
 
 @router.post(
@@ -566,6 +719,7 @@ def approve_employee(
 def deactivate_employee(
     approved_id: int,
     request: Request,
+    payload: DeactivateEmployeeRequest | None = None,
     db: Session = Depends(get_db),
 ):
 
@@ -585,17 +739,53 @@ def deactivate_employee(
             detail="Approved employee not found.",
         )
 
-    row.is_active = False
+    user = None
 
     if row.claimed_user_id is not None:
-
         user = db.get(
             User,
             row.claimed_user_id,
         )
 
-        if user is not None:
-            user.is_active = False
+    if (
+        user is not None
+        and admin_replacement_required(
+            target_role=user.role,
+            target_is_active=user.is_active,
+            active_admin_count=len(
+                active_admin_users(
+                    db
+                )
+            ),
+        )
+    ):
+        replacement_email = (
+            payload.replacement_admin_email
+            if payload is not None
+            else None
+        )
+
+        if not replacement_email:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "StoreDash must always have an "
+                    "active admin. Enter the email "
+                    "of an existing StoreDash account "
+                    "to become the replacement admin."
+                ),
+            )
+
+        promote_replacement_admin(
+            db=db,
+            email=replacement_email,
+            target_user_id=user.id,
+        )
+
+    row.is_active = False
+
+    if user is not None:
+        user.is_active = False
 
         sessions = list(
             db.scalars(
@@ -605,7 +795,7 @@ def deactivate_employee(
                 .where(
                     AuthSession.user_id
                     ==
-                    row.claimed_user_id,
+                    user.id,
                     AuthSession.revoked_at.is_(
                         None
                     ),
