@@ -54,6 +54,9 @@ export default function EmployeesPage() {
   const [message, setMessage] =
     useState("");
 
+  const [currentUser, setCurrentUser] =
+    useState<CurrentUser | null>(null);
+
   async function loadEmployees() {
     const data = await api<Employee[]>(
       "/auth/approved-employees"
@@ -69,6 +72,8 @@ export default function EmployeesPage() {
           await api<CurrentUser>(
             "/auth/me"
           );
+
+        setCurrentUser(user);
 
         if (user.role !== "admin") {
           router.replace(
@@ -144,12 +149,57 @@ export default function EmployeesPage() {
   async function deactivate(
     employee: Employee
   ) {
-    if (
-      !window.confirm(
-        `Deactivate ${employee.email}?`
-      )
-    ) {
+    const activeAdmins =
+      employees.filter(
+        (row) =>
+          row.is_active
+          && row.role === "admin"
+      );
+
+    const removingLastAdmin =
+      employee.is_active
+      && employee.role === "admin"
+      && activeAdmins.length <= 1;
+
+    const firstConfirmation =
+      window.confirm(
+        employee.role === "admin"
+          ? `Deactivate admin ${employee.email}? Admin access will be revoked immediately.`
+          : `Deactivate ${employee.email}?`
+      );
+
+    if (!firstConfirmation) {
       return;
+    }
+
+    let replacementAdminEmail:
+      string | null = null;
+
+    if (removingLastAdmin) {
+      const entered =
+        window.prompt(
+          "StoreDash must always have an active admin. Enter the email of an EXISTING StoreDash account that should become admin before this account is deactivated."
+        );
+
+      replacementAdminEmail =
+        entered?.trim() || null;
+
+      if (!replacementAdminEmail) {
+        setError(
+          "Deactivation cancelled. A replacement admin email is required."
+        );
+
+        return;
+      }
+
+      const finalConfirmation =
+        window.confirm(
+          `Confirm admin transfer:\n\nNew admin: ${replacementAdminEmail}\nDeactivate: ${employee.email}\n\nContinue?`
+        );
+
+      if (!finalConfirmation) {
+        return;
+      }
     }
 
     setError("");
@@ -160,14 +210,30 @@ export default function EmployeesPage() {
         `/auth/approved-employees/${employee.id}/deactivate`,
         {
           method: "POST",
+          body: JSON.stringify({
+            replacement_admin_email:
+              replacementAdminEmail,
+          }),
         }
       );
 
       setMessage(
-        `${employee.email} deactivated.`
+        removingLastAdmin
+          ? `Admin access transferred to ${replacementAdminEmail}. ${employee.email} deactivated.`
+          : `${employee.email} deactivated.`
       );
 
       await loadEmployees();
+
+      if (
+        currentUser
+        && employee.claimed_user_id
+          === currentUser.id
+      ) {
+        router.replace(
+          "/login"
+        );
+      }
 
     } catch (err) {
       setError(
@@ -201,6 +267,8 @@ export default function EmployeesPage() {
       >
         Only approved emails can create
         StoreDash employee accounts.
+        StoreDash must always keep at least
+        one active administrator.
       </p>
 
       <form
@@ -275,6 +343,10 @@ export default function EmployeesPage() {
           >
             <option value="operations">
               Operations
+            </option>
+
+            <option value="admin">
+              Admin
             </option>
 
             <option value="manager">
