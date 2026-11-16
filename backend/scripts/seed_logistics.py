@@ -393,6 +393,8 @@ TYPES = {
 
     "household_plastics": [
         ("Plastic item", "unit", 1),
+        ("Plastic pack", "pack", 3),
+        ("Plastic carton", "carton", 6),
         ("Plastic bucket", "bucket", 4),
         ("Plastic basin", "basin", 4),
         ("Plastic basket", "basket", 4),
@@ -402,11 +404,14 @@ TYPES = {
     "kitchenware": [
         ("Kitchenware item", "unit", 1),
         ("Kitchenware pack", "pack", 3),
+        ("Kitchenware carton", "carton", 6),
         ("Serving tray", "tray", 3),
     ],
 
     "household_tools": [
         ("Household tool", "unit", 1),
+        ("Household tools pack", "pack", 3),
+        ("Household tools carton", "carton", 6),
     ],
 }
 
