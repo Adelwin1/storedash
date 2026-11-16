@@ -133,13 +133,33 @@ export default function SupplierRegistrationForm() {
 
 
           <label>
-            Category
+            Primary StoreDash category
 
-            <input
+            <select
               className="input"
               name="category"
-              placeholder="Provisions, drinks, rice, cosmetics..."
-            />
+              required
+              defaultValue=""
+            >
+              <option
+                value=""
+                disabled
+              >
+                Select category...
+              </option>
+
+              <option value="Provisions">
+                Provisions
+              </option>
+
+              <option value="Foodstuffs">
+                Foodstuffs
+              </option>
+
+              <option value="Utensils & Plastics">
+                Utensils & Plastics
+              </option>
+            </select>
           </label>
 
 
