@@ -48,6 +48,14 @@ CATEGORIES = [
 
     ("frozen_food", "Frozen Food", 2, 6, 12),
 
+    # Agogo launch foodstuffs. These are logistics categories,
+    # separate from the three market-facing operator categories.
+    ("roots_tubers", "Roots & Tubers", 2, 6, 12),
+    ("plantain_banana", "Plantain & Banana", 2, 6, 12),
+    ("fresh_vegetables", "Fresh Vegetables", 1, 5, 10),
+    ("fresh_fruits", "Fresh Fruits", 1, 5, 10),
+    ("dried_fish", "Smoked & Dried Fish", 1, 4, 8),
+
     ("baby_food", "Baby Food & Formula", 1, 4, 8),
     ("diapers_wipes", "Diapers & Baby Wipes", 2, 6, 12),
 
@@ -68,6 +76,11 @@ CATEGORIES = [
     ("hair_extensions", "Wigs & Hair Extensions", 1, 4, 9),
     ("beauty_tools", "Beauty Tools & Accessories", 1, 4, 8),
     ("beauty_appliances", "Beauty Appliances", 2, 5, 10),
+
+    # Agogo launch utensils/plastics.
+    ("household_plastics", "Household Plastics", 1, 4, 8),
+    ("kitchenware", "Kitchenware", 1, 4, 8),
+    ("household_tools", "Household Tools", 1, 4, 8),
 ]
 
 
@@ -106,6 +119,7 @@ TYPES = {
         ("Milk tin", "tin", 1),
         ("Milk can", "can", 1),
         ("Milk sachet", "sachet", 1),
+        ("Milk pouch", "pouch", 2),
         ("Milk carton", "carton", 4),
         ("Milk bottle", "bottle", 1),
         ("Milk tub", "tub", 2),
@@ -222,6 +236,33 @@ TYPES = {
         ("Frozen food pack", "pack", 2),
         ("Frozen food bag", "bag", 4),
         ("Frozen food carton", "carton", 7),
+    ],
+
+    "roots_tubers": [
+        ("Root or tuber single", "unit", 1),
+        ("Root or tuber bag", "bag", 5),
+        ("Root or tuber sack", "sack", 9),
+    ],
+
+    "plantain_banana": [
+        ("Plantain or banana bunch", "bunch", 5),
+    ],
+
+    "fresh_vegetables": [
+        ("Vegetable bag", "bag", 4),
+        ("Vegetable sack", "sack", 8),
+        ("Vegetable crate", "crate", 7),
+    ],
+
+    "fresh_fruits": [
+        ("Fruit single", "unit", 1),
+        ("Fruit bag", "bag", 4),
+        ("Fruit crate", "crate", 7),
+    ],
+
+    "dried_fish": [
+        ("Dried fish bag", "bag", 4),
+        ("Dried fish box", "box", 4),
     ],
 
     "baby_food": [
@@ -348,6 +389,24 @@ TYPES = {
         ("Hair dryer box", "box", 3),
         ("Straightener box", "box", 2),
         ("Beauty appliance carton", "carton", 6),
+    ],
+
+    "household_plastics": [
+        ("Plastic item", "unit", 1),
+        ("Plastic bucket", "bucket", 4),
+        ("Plastic basin", "basin", 4),
+        ("Plastic basket", "basket", 4),
+        ("Plastic jerrycan", "jerrycan", 5),
+    ],
+
+    "kitchenware": [
+        ("Kitchenware item", "unit", 1),
+        ("Kitchenware pack", "pack", 3),
+        ("Serving tray", "tray", 3),
+    ],
+
+    "household_tools": [
+        ("Household tool", "unit", 1),
     ],
 }
 
