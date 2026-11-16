@@ -143,3 +143,40 @@ def test_manual_payment_confirmation_is_disabled():
         raise AssertionError(
             "Manual payment confirmation unexpectedly remained enabled."
         )
+
+
+
+def test_last_active_admin_requires_replacement():
+    from app.api.routes.auth import (
+        admin_replacement_required,
+    )
+
+    assert admin_replacement_required(
+        target_role=Role.ADMIN,
+        target_is_active=True,
+        active_admin_count=1,
+    )
+
+
+def test_admin_can_be_deactivated_when_another_admin_exists():
+    from app.api.routes.auth import (
+        admin_replacement_required,
+    )
+
+    assert not admin_replacement_required(
+        target_role=Role.ADMIN,
+        target_is_active=True,
+        active_admin_count=2,
+    )
+
+
+def test_non_admin_never_requires_admin_replacement():
+    from app.api.routes.auth import (
+        admin_replacement_required,
+    )
+
+    assert not admin_replacement_required(
+        target_role=Role.OPERATIONS,
+        target_is_active=True,
+        active_admin_count=1,
+    )
